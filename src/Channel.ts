@@ -1,4 +1,4 @@
-import { makeSource, type Handler, type Source } from './index.js';
+import { makeSource, type Handler, type Source } from "./index.js";
 
 /**
  * A Channel represents a reactive data source consisting of three elements:
@@ -12,8 +12,8 @@ import { makeSource, type Handler, type Source } from './index.js';
  */
 export interface Channel<Out, In = Out> {
   subscribe: Source<Out>;
-  update?: (v: In) => void;
-  value?: () => Out;
+  update?: ((v: In) => void) | undefined;
+  value?: (() => Out) | undefined;
 }
 
 /**
@@ -22,7 +22,7 @@ export interface Channel<Out, In = Out> {
  */
 export interface ChannelSync<Out, In = Out> extends Channel<Out, In> {
   subscribe: Source<Out>;
-  update?: (v: In) => void;
+  update?: ((v: In) => void) | undefined;
   value: () => Out;
 }
 
@@ -30,9 +30,9 @@ export interface ChannelSync<Out, In = Out> extends Channel<Out, In> {
  * A Read only {@link Channel}
  * @public
  */
-export interface ReadOnlyChannel<Out> extends Omit<Channel<Out>, 'update'> {
+export interface ReadOnlyChannel<Out> extends Omit<Channel<Out>, "update"> {
   subscribe: Source<Out>;
-  value?: () => Out;
+  value?: (() => Out) | undefined;
 }
 
 /**
@@ -40,7 +40,7 @@ export interface ReadOnlyChannel<Out> extends Omit<Channel<Out>, 'update'> {
  * @public
  */
 export interface ReadOnlyChannelSync<Out>
-  extends Omit<ChannelSync<Out>, 'update'>,
+  extends Omit<ChannelSync<Out>, "update">,
     ReadOnlyChannel<Out> {
   subscribe: Source<Out>;
   value: () => Out;
@@ -53,7 +53,7 @@ export interface ReadOnlyChannelSync<Out>
 export interface ReadWriteChannel<Out, In = Out> extends Channel<Out, In> {
   subscribe: Source<Out>;
   update: (v: In) => void;
-  value?: () => Out;
+  value?: (() => Out) | undefined;
 }
 
 /**
@@ -69,7 +69,7 @@ export interface ReadWriteChannelSync<Out, In = Out>
 }
 
 /** @internal */
-const NO_VALUE = Symbol('NO_VALUE');
+const NO_VALUE = Symbol("NO_VALUE");
 
 /**
  * Makes sure that a value sent to the Channel's `update` method is immediately
@@ -95,7 +95,7 @@ const NO_VALUE = Symbol('NO_VALUE');
  */
 export function syncBuffer<T>(
   source: ReadWriteChannel<T>,
-  isValueEqual: (a: T, b: T) => boolean = () => false
+  isValueEqual: (a: T, b: T) => boolean = () => false,
 ): ReadWriteChannelSync<T | undefined, T> {
   let value: T | typeof NO_VALUE = NO_VALUE;
 
@@ -112,7 +112,7 @@ export function syncBuffer<T>(
     },
     value: () => {
       return value === NO_VALUE ? undefined : value;
-    }
+    },
   };
 }
 
@@ -122,7 +122,7 @@ export function syncBuffer<T>(
  * @internal
  */
 export function makeValueChannel<T>(
-  initialValue: () => T
+  initialValue: () => T,
 ): ReadWriteChannelSync<T> {
   let currentValue: T | typeof NO_VALUE = NO_VALUE;
 
@@ -141,6 +141,6 @@ export function makeValueChannel<T>(
     update(newValue) {
       currentValue = newValue;
       subscribe.emit(currentValue as T);
-    }
+    },
   };
 }

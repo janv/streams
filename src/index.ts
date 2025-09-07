@@ -197,7 +197,7 @@ export function name<T>(handlerName?: string) {
       // https://stackoverflow.com/a/50402530
       const fullname = `emit(${handlerName})`;
       const hack = { [fullname]: handler };
-      return source((v) => hack[fullname](v));
+      return source((v) => hack[fullname]!(v));
     };
   };
 }
@@ -441,11 +441,11 @@ export function switchAll<T, N extends null | undefined | never = never>(
     let unsubscribeFromSource: UnsubscribeFn | null | undefined = null;
     const unsubscribeFromSourceSource = sourceSource(
       function switchAllHandler(source) {
-      // Source has changed:
-      // 1. Unsubscribe from previous source
-      unsubscribeFromSource?.();
-      // 2. Subscribe to new Source
-      unsubscribeFromSource = source ? source(handler) : source;
+        // Source has changed:
+        // 1. Unsubscribe from previous source
+        unsubscribeFromSource?.();
+        // 2. Subscribe to new Source
+        unsubscribeFromSource = source ? source(handler) : source;
       },
     );
 
