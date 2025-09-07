@@ -276,6 +276,12 @@ export const fan = <T>(source: Source<T>) => {
 };
 
 /**
+ * Utility type to force evaluation of type T
+ * Will cause TypeScript to show an error at the specific point where types mismatch
+ */
+type Eval<T> = T extends any ? T : never;
+
+/**
  * Allows for easier expression of a series of operators.
  *
  * The first argument should always be a Source, subsequent arguments should be
@@ -289,46 +295,49 @@ export const fan = <T>(source: Source<T>) => {
  */
 export function pipe<T>(source: Source<T>): Source<T>;
 /** @internal */
-export function pipe<A, B>(source: Source<A>, ab: Operator<A, B>): Source<B>;
+export function pipe<A, B>(
+  source: Source<Eval<A>>,
+  ab: typeof source extends Source<infer T> ? Operator<T, Eval<B>> : never,
+): Source<B>;
 /** @internal */
 export function pipe<A, B, C>(
-  source: Source<A>,
-  ab: Operator<A, B>,
-  bc: Operator<B, C>
+  source: Source<Eval<A>>,
+  ab: typeof source extends Source<infer T> ? Operator<T, Eval<B>> : never,
+  bc: typeof ab extends Operator<any, infer T> ? Operator<T, Eval<C>> : never,
 ): Source<C>;
 /** @internal */
 export function pipe<A, B, C, D>(
-  source: Source<A>,
-  ab: Operator<A, B>,
-  bc: Operator<B, C>,
-  cd: Operator<C, D>
+  source: Source<Eval<A>>,
+  ab: typeof source extends Source<infer T> ? Operator<T, Eval<B>> : never,
+  bc: typeof ab extends Operator<any, infer T> ? Operator<T, Eval<C>> : never,
+  cd: typeof bc extends Operator<any, infer T> ? Operator<T, Eval<D>> : never,
 ): Source<D>;
 /** @internal */
 export function pipe<A, B, C, D, E>(
-  source: Source<A>,
-  ab: Operator<A, B>,
-  bc: Operator<B, C>,
-  cd: Operator<C, D>,
-  de: Operator<D, E>
+  source: Source<Eval<A>>,
+  ab: typeof source extends Source<infer T> ? Operator<T, Eval<B>> : never,
+  bc: typeof ab extends Operator<any, infer T> ? Operator<T, Eval<C>> : never,
+  cd: typeof bc extends Operator<any, infer T> ? Operator<T, Eval<D>> : never,
+  de: typeof cd extends Operator<any, infer T> ? Operator<T, Eval<E>> : never,
 ): Source<E>;
 /** @internal */
 export function pipe<A, B, C, D, E, F>(
-  source: Source<A>,
-  ab: Operator<A, B>,
-  bc: Operator<B, C>,
-  cd: Operator<C, D>,
-  de: Operator<D, E>,
-  ef: Operator<E, F>
+  source: Source<Eval<A>>,
+  ab: typeof source extends Source<infer T> ? Operator<T, Eval<B>> : never,
+  bc: typeof ab extends Operator<any, infer T> ? Operator<T, Eval<C>> : never,
+  cd: typeof bc extends Operator<any, infer T> ? Operator<T, Eval<D>> : never,
+  de: typeof cd extends Operator<any, infer T> ? Operator<T, Eval<E>> : never,
+  ef: typeof de extends Operator<any, infer T> ? Operator<T, Eval<F>> : never,
 ): Source<F>;
 /** @internal */
 export function pipe<A, B, C, D, E, F, G>(
-  source: Source<A>,
-  ab: Operator<A, B>,
-  bc: Operator<B, C>,
-  cd: Operator<C, D>,
-  de: Operator<D, E>,
-  ef: Operator<E, F>,
-  fg: Operator<F, G>
+  source: Source<Eval<A>>,
+  ab: typeof source extends Source<infer T> ? Operator<T, Eval<B>> : never,
+  bc: typeof ab extends Operator<any, infer T> ? Operator<T, Eval<C>> : never,
+  cd: typeof bc extends Operator<any, infer T> ? Operator<T, Eval<D>> : never,
+  de: typeof cd extends Operator<any, infer T> ? Operator<T, Eval<E>> : never,
+  ef: typeof de extends Operator<any, infer T> ? Operator<T, Eval<F>> : never,
+  fg: typeof ef extends Operator<any, infer T> ? Operator<T, Eval<G>> : never,
 ): Source<G>;
 export function pipe<T>(
   source: Source<any>,
