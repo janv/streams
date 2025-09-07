@@ -1,0 +1,8 @@
+{
+  "mode": "pre",
+  "tag": "next",
+  "initialVersions": {
+    "@janv/streams": "0.1.0"
+  },
+  "changesets": []
+}
