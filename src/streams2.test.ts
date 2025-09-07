@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
+import test, { describe, mock, type Mock } from "node:test";
 import {
   combineLatest,
   fan,
@@ -16,74 +17,86 @@ import {
   type Operator,
   type Source,
 } from "./index.js";
+import assert from "node:assert";
 
 describe("makeSource", () => {
   test("onSubscribe emits to new subscribers only", () => {
     let i = 1;
     const source = makeSource<string>((emit) => emit(`hallo ${i++}`));
-    const handler1 = jest.fn();
-    const handler2 = jest.fn();
+    const handler1 = mock.fn();
+    const handler2 = mock.fn();
     source(handler1);
     source(handler2);
-    expect(handler1.mock.calls).toMatchObject([["hallo 1"]]);
-    expect(handler2.mock.calls).toMatchObject([["hallo 2"]]);
+    assert.partialDeepStrictEqual(handler1.mock.calls[0]?.arguments, [
+      "hallo 1",
+    ]);
+    assert.partialDeepStrictEqual(handler2.mock.calls[0]?.arguments, [
+      "hallo 2",
+    ]);
   });
 
   test("emit lets us emit multiple values at once", () => {
     const source = makeSource<string>();
-    const handler = jest.fn();
+    const handler = mock.fn();
     source(handler);
     source.emit("hallo", "welt");
-    expect(handler.mock.calls).toMatchObject([["hallo"], ["welt"]]);
+    assert.partialDeepStrictEqual(handler.mock.calls[0]?.arguments, ["hallo"]);
+    assert.partialDeepStrictEqual(handler.mock.calls[1]?.arguments, ["welt"]);
   });
 
   test("emit will always call handlers, even without argument", () => {
     const source = makeSource<void>();
-    const handler = jest.fn();
+    const handler = mock.fn();
     source(handler);
     source.emit();
-    expect(handler).toHaveBeenCalled();
-    expect(handler).toHaveBeenCalledWith(undefined);
+    assert.partialDeepStrictEqual(handler.mock.calls[0]?.arguments, [
+      undefined,
+    ]);
   });
 
-  test("onSubscribe is called after adding the new handler", () => {
-    const onSubscribe = jest.fn(() => expect(source.handlers.size).toBe(1));
+  test("onSubscribe is called after adding the new handler", (t) => {
+    t.plan(2);
+    const onSubscribe = mock.fn(() => t.assert.equal(source.handlers.size, 1));
     const source: CustomSource<string> = makeSource<string>(onSubscribe);
-    expect(source.handlers.size).toBe(0);
+    t.assert.equal(source.handlers.size, 0);
     source(() => {});
-    expect.assertions(2);
   });
 
-  test("onUnsubscribe is called after removing a handler", () => {
-    const onUnsubscribe = jest.fn(() => expect(source.handlers.size).toBe(0));
+  test("onUnsubscribe is called after removing a handler", (t) => {
+    t.plan(2);
+    const onUnsubscribe = mock.fn(() =>
+      t.assert.equal(source.handlers.size, 0),
+    );
     const source: CustomSource<string> = makeSource<string>(
       undefined,
       onUnsubscribe,
     );
     const unsubscribe = source(() => {});
     unsubscribe();
-    expect(source.handlers.size).toBe(0);
-    expect.assertions(2);
+    t.assert.equal(source.handlers.size, 0);
   });
 });
 
 function testOperatorProperties<I, O = I>(operator?: Operator<I, O>) {
-  const maybeTest = operator ? test : (name: string) => test.todo(name);
+  if (!operator) {
+    describe.todo("behaves like an operator");
+    return;
+  }
   describe("behaves like an operator", () => {
-    maybeTest("does not do anything before subscribing", () => {
-      const stream = jest.fn();
+    test("does not do anything before subscribing", (t) => {
+      const stream: Mock<Source<any>> = mock.fn();
       operator!(stream);
-      expect(stream).not.toHaveBeenCalled();
+      t.assert.equal(stream.mock.calls.length, 0);
     });
-    maybeTest("forwards subscriptions and unsubscriptions", () => {
-      const unsubscribe = jest.fn();
-      const stream = jest.fn(() => unsubscribe);
-      const streamWithOperator = operator!(stream);
+    test("forwards subscriptions and unsubscriptions", (t) => {
+      const unsubscribe = mock.fn();
+      const stream = mock.fn(() => unsubscribe);
+      const streamWithOperator = operator(stream);
       const unsubscribeWithOperator = streamWithOperator(() => ({}));
-      expect(stream).toHaveBeenCalledTimes(1);
-      expect(unsubscribe).toHaveBeenCalledTimes(0);
+      t.assert.equal(stream.mock.calls.length, 1);
+      t.assert.equal(unsubscribe.mock.calls.length, 0);
       unsubscribeWithOperator();
-      expect(unsubscribe).toHaveBeenCalledTimes(1);
+      t.assert.equal(unsubscribe.mock.calls.length, 1);
     });
   });
 }
@@ -95,9 +108,10 @@ describe("filter", () => {
     });
 
     const filteredStream = filter<number>((e) => e > 2)(stream);
-    const handler = jest.fn();
+    const handler = mock.fn();
     filteredStream(handler);
-    expect(handler.mock.calls).toMatchObject([[3], [4]]);
+    assert.partialDeepStrictEqual(handler.mock.calls[0]?.arguments, [3]);
+    assert.partialDeepStrictEqual(handler.mock.calls[1]?.arguments, [4]);
   });
   testOperatorProperties(filter(() => true));
 });
@@ -108,48 +122,53 @@ describe("map", () => {
       emit(1, 2, 3, 4);
     });
     const mappedStream = map((n: number) => n * 2)(stream);
-    const handler = jest.fn();
+    const handler = mock.fn();
     mappedStream(handler);
-    expect(handler.mock.calls).toMatchObject([[2], [4], [6], [8]]);
+    assert.partialDeepStrictEqual(handler.mock.calls[0]?.arguments, [2]);
+    assert.partialDeepStrictEqual(handler.mock.calls[1]?.arguments, [4]);
+    assert.partialDeepStrictEqual(handler.mock.calls[2]?.arguments, [6]);
+    assert.partialDeepStrictEqual(handler.mock.calls[3]?.arguments, [8]);
   });
   testOperatorProperties(map((x) => x));
 });
 
 describe("mapAsync", () => {
-  test("unwraps promises in source and mapFn", (done) => {
+  test("unwraps promises in source and mapFn", (t, done) => {
     const stream = makeSource<Promise<number>>();
     const mappedStream = mapAsync<number>((n) => Promise.resolve(n * 2))(
       stream,
     );
     const handler = (v: number) => {
-      expect(v).toBe(4);
+      assert.equal(v, 4);
       done();
     };
     mappedStream(handler);
     stream.emit(Promise.resolve(2));
   });
 
-  test("works with regular values", (done) => {
+  test("works with regular values", (t, done) => {
+    t.plan(1);
     const stream = makeSource<number>();
     const mappedStream = mapAsync<number>((n) => n * 2)(stream);
     const handler = (v: number) => {
-      expect(v).toBe(4);
+      t.assert.equal(v, 4);
       done();
     };
     mappedStream(handler);
     stream.emit(2);
   });
 
-  test("is always asynchronous", (done) => {
+  test("is always asynchronous", (t, done) => {
+    t.plan(2);
     const stream = makeSource<number>();
     const mappedStream = mapAsync<number>((n) => n * 2)(stream);
-    const handler = jest.fn((v: number) => {
-      expect(v).toBe(4);
+    const handler = mock.fn((v: number) => {
+      t.assert.equal(v, 4);
       done();
     });
     mappedStream(handler);
     stream.emit(2);
-    expect(handler).not.toBeCalled();
+    t.assert.equal(handler.mock.calls.length, 0);
   });
 
   test("does not emit or call mapFn when handler is unsubscribed", async () => {
@@ -158,12 +177,12 @@ describe("mapAsync", () => {
     const valuePromise = makeDeferred<number>();
     const mapPromise = makeDeferred<number>();
 
-    const mapFn = jest.fn((n: number) => mapPromise);
+    const mapFn = mock.fn((n: number) => mapPromise);
 
     const mappedStream = mapAsync<number>(mapFn)(stream);
 
-    const handlerA = jest.fn();
-    const handlerB = jest.fn();
+    const handlerA = mock.fn();
+    const handlerB = mock.fn();
     const unsubscribeA = mappedStream(handlerA);
     const unsubscribeB = mappedStream(handlerB);
     stream.emit(valuePromise);
@@ -172,17 +191,17 @@ describe("mapAsync", () => {
     unsubscribeA();
     await valuePromise.resolve(2);
 
-    expect(mapFn).toBeCalledTimes(1);
-    expect(handlerA).not.toBeCalled();
-    expect(handlerB).not.toBeCalled();
+    assert.equal(mapFn.mock.calls.length, 1);
+    assert.equal(handlerA.mock.calls.length, 0);
+    assert.equal(handlerB.mock.calls.length, 0);
 
     // unsubscribe B before the map promise is resolved
     unsubscribeB();
     await mapPromise.resolve(4);
 
-    expect(mapFn).toBeCalledTimes(1);
-    expect(handlerA).not.toBeCalled();
-    expect(handlerB).not.toBeCalled();
+    assert.equal(mapFn.mock.calls.length, 1);
+    assert.equal(handlerA.mock.calls.length, 0);
+    assert.equal(handlerB.mock.calls.length, 0);
 
     function makeDeferred<T>(): Promise<T> & { resolve: (n: T) => Promise<T> } {
       let resolve: (value: T) => Promise<T>;
@@ -205,24 +224,24 @@ describe("mapAsync", () => {
 describe("kickoff", () => {
   test("invokes handler immediately with provided value", () => {
     const stream = makeSource<number>();
-    const handler = jest.fn();
+    const handler = mock.fn();
     const kickoffStream = startWith(123)(stream);
     kickoffStream(handler);
-    expect(handler).toHaveBeenCalledWith(123);
+    assert.equal(handler.mock.calls[0]?.arguments[0], 123);
     stream.emit(1);
-    expect(handler).toHaveBeenCalledWith(1);
+    assert.equal(handler.mock.calls[1]?.arguments[0], 1);
   });
 
   test("does not use kickoff value when sync value coming from source", () => {
     const stream = makeSource<number>((e) => e(666));
-    const handler = jest.fn();
-    const startWithProvider = jest.fn(() => 123);
+    const handler = mock.fn();
+    const startWithProvider = mock.fn(() => 123);
     const kickoffStream = startWith(startWithProvider)(stream);
     kickoffStream(handler);
     stream.emit(777);
-    expect(handler).toHaveBeenCalledWith(666);
-    expect(handler).toHaveBeenCalledWith(777);
-    expect(startWithProvider).not.toHaveBeenCalled();
+    assert.equal(handler.mock.calls[0]?.arguments[0], 666);
+    assert.equal(handler.mock.calls[1]?.arguments[0], 777);
+    assert.equal(startWithProvider.mock.calls.length, 0);
   });
 
   testOperatorProperties(startWith(123));
@@ -231,36 +250,51 @@ describe("kickoff", () => {
 describe("memo", () => {
   test("emits once for two identical updates in a row", () => {
     const stream = makeSource<number>((e) => e(1, 2, 2, 3));
-    const handler = jest.fn();
+    const handler = mock.fn();
     const memoStream = memo()(stream);
     memoStream(handler);
-    expect(handler.mock.calls).toMatchObject([[1], [2], [3]]);
+    assert.partialDeepStrictEqual(handler.mock.calls, [
+      { arguments: [1] },
+      { arguments: [2] },
+      { arguments: [3] },
+    ]);
     stream.emit(2);
-    expect(handler.mock.calls).toMatchObject([[1], [2], [3], [2]]);
+    assert.partialDeepStrictEqual(handler.mock.calls, [
+      { arguments: [1] },
+      { arguments: [2] },
+      { arguments: [3] },
+      { arguments: [2] },
+    ]);
   });
 
   test("compares with passed values, not received values", () => {
     const stream = makeSource<number>((e) => e(1, 2, 3, 4, 3, 4, 5));
-    const handler = jest.fn();
+    const handler = mock.fn();
     const increasingStream = memo<number>((value, prev) =>
       prev === undefined ? false : value <= prev,
     )(stream);
     increasingStream(handler);
-    expect(handler.mock.calls).toMatchObject([[1], [2], [3], [4], [5]]);
+    assert.partialDeepStrictEqual(handler.mock.calls, [
+      { arguments: [1] },
+      { arguments: [2] },
+      { arguments: [3] },
+      { arguments: [4] },
+      { arguments: [5] },
+    ]);
   });
 
   test("works with two subscribers", () => {
     const stream = makeSource<number>();
-    const handler1 = jest.fn().mockName("handler1");
-    const handler2 = jest.fn().mockName("handler2");
+    const handler1 = mock.fn();
+    const handler2 = mock.fn();
     const memoStream = memo()(stream);
     memoStream(handler1);
     memoStream(handler2);
 
     stream.emit(1);
     stream.emit(1);
-    expect(handler1).toBeCalledTimes(1);
-    expect(handler2).toBeCalledTimes(1);
+    assert.partialDeepStrictEqual(handler1.mock.calls, [{ arguments: [1] }]);
+    assert.partialDeepStrictEqual(handler2.mock.calls, [{ arguments: [1] }]);
   });
 
   testOperatorProperties(memo());
@@ -270,38 +304,38 @@ describe("fan", () => {
   test("subscribes only once to the source, for two consumers", () => {
     const stream = makeSource();
     const fannedStream = fan(stream);
-    const handler1 = jest.fn();
-    const handler2 = jest.fn();
+    const handler1 = mock.fn();
+    const handler2 = mock.fn();
     fannedStream(handler1);
     fannedStream(handler2);
-    expect(stream.handlers.size).toBe(1);
+    assert.equal(stream.handlers.size, 1);
     stream.emit(1);
-    expect(handler1).toHaveBeenCalled();
-    expect(handler2).toHaveBeenCalled();
+    assert.notEqual(handler1.mock.calls.length, 0);
+    assert.notEqual(handler2.mock.calls.length, 0);
   });
 
   test("subscribes with the first consumer", () => {
     const stream = makeSource();
     const fannedStream = fan(stream);
-    const handler1 = jest.fn();
-    const handler2 = jest.fn();
+    const handler1 = mock.fn();
+    const handler2 = mock.fn();
     fannedStream(handler1);
     fannedStream(handler2);
-    expect(stream.handlers.size).toBe(1);
+    assert.equal(stream.handlers.size, 1);
   });
 
   test("unsubscribes with the last consumer", () => {
     const stream = makeSource();
     const fannedStream = fan(stream);
-    const handler1 = jest.fn();
-    const handler2 = jest.fn();
+    const handler1 = mock.fn();
+    const handler2 = mock.fn();
     const unsub1 = fannedStream(handler1);
     const unsub2 = fannedStream(handler2);
-    expect(stream.handlers.size).toBe(1);
+    assert.equal(stream.handlers.size, 1);
     unsub1();
-    expect(stream.handlers.size).toBe(1);
+    assert.equal(stream.handlers.size, 1);
     unsub2();
-    expect(stream.handlers.size).toBe(0);
+    assert.equal(stream.handlers.size, 0);
   });
   testOperatorProperties(fan);
 });
@@ -309,7 +343,7 @@ describe("fan", () => {
 describe("pipe", () => {
   test("piping operators together itself doesn't do anything to the source", () => {
     const stream = makeSource<number>();
-    const streamSpy = jest.fn(stream);
+    const streamSpy = mock.fn(stream);
 
     const filteredStream = pipe(
       streamSpy,
@@ -317,44 +351,46 @@ describe("pipe", () => {
       map((n) => n * 2),
     );
 
-    expect(streamSpy).not.toHaveBeenCalled();
+    assert.equal(streamSpy.mock.calls.length, 0);
   });
 });
 
 describe("merge", () => {
-  it("subscribes to all on subscription", () => {
-    const onSubscribeA = jest.fn();
-    const onSubscribeB = jest.fn();
+  test("subscribes to all on subscription", () => {
+    const onSubscribeA = mock.fn();
+    const onSubscribeB = mock.fn();
     const a = makeSource<string>(onSubscribeA);
     const b = makeSource<number>(onSubscribeB);
     const merged = merge(a, b);
     merged(() => {});
-    expect(onSubscribeA).toBeCalled();
-    expect(onSubscribeB).toBeCalled();
+    assert.equal(onSubscribeA.mock.calls.length, 1);
+    assert.equal(onSubscribeB.mock.calls.length, 1);
   });
 
-  it("unsubscribes from all on unsubscribe", () => {
-    const onUnsubscribeA = jest.fn();
-    const onUnsubscribeB = jest.fn();
+  test("unsubscribes from all on unsubscribe", () => {
+    const onUnsubscribeA = mock.fn();
+    const onUnsubscribeB = mock.fn();
     const a = makeSource<string>(undefined, onUnsubscribeA);
     const b = makeSource<number>(undefined, onUnsubscribeB);
     const merged = merge(a, b);
     const unsubscribe = merged(() => {});
     unsubscribe();
-    expect(onUnsubscribeA).toBeCalled();
-    expect(onUnsubscribeB).toBeCalled();
+    assert.equal(onUnsubscribeA.mock.calls.length, 1);
+    assert.equal(onUnsubscribeB.mock.calls.length, 1);
   });
 
-  it("receives events from all", () => {
+  test("receives events from all", () => {
     const a = makeSource<string>();
     const b = makeSource<number>();
     const merged = merge(a, b);
-    const handler = jest.fn();
+    const handler = mock.fn();
     merged(handler);
     a.emit("a");
     b.emit(123);
-    expect(handler).toBeCalledWith("a");
-    expect(handler).toBeCalledWith(123);
+    assert.partialDeepStrictEqual(handler.mock.calls, [
+      { arguments: ["a"] },
+      { arguments: [123] },
+    ]);
   });
 });
 
@@ -363,66 +399,66 @@ describe("switchAll", () => {
     const a = makeSource<string>();
     const b = makeSource<string>();
     const ab = makeSource<Source<string>>();
-    const handler = jest.fn();
+    const handler = mock.fn();
     switchAll(ab)(handler);
 
     a.emit("a1");
     b.emit("b1");
-    expect(handler).not.toBeCalled();
+    assert.equal(handler.mock.calls.length, 0);
 
     ab.emit(a);
     a.emit("a2");
     b.emit("b2");
-    expect(handler).toBeCalledWith("a2");
-    expect(handler).not.toBeCalledWith("b2");
+    assert(handler.mock.calls.some((call) => call.arguments[0] === "a2"));
+    assert(handler.mock.calls.every((call) => call.arguments[0] !== "b2"));
 
     ab.emit(b);
     a.emit("a3");
     b.emit("b3");
-    expect(handler).not.toBeCalledWith("a3");
-    expect(handler).toBeCalledWith("b3");
+    assert(handler.mock.calls.every((call) => call.arguments[0] !== "a3"));
+    assert(handler.mock.calls.some((call) => call.arguments[0] === "b3"));
   });
 
   test("switching the stream will not emit an event", () => {
     const a = makeSource<string>();
     const ab = makeSource<Source<string>>();
-    const handler = jest.fn();
+    const handler = mock.fn();
     switchAll(ab)(handler);
 
     ab.emit(a);
-    expect(handler).not.toBeCalled();
+    assert.equal(handler.mock.calls.length, 0);
   });
 
   test("it will switch off an on by emitting undefined", () => {
     const a = makeSource<string>();
     const b = makeSource<string>();
     const ab = makeSource<Source<string> | undefined>();
-    const handler = jest.fn();
+    const handler = mock.fn();
     switchAll(ab)(handler);
 
     ab.emit(a);
     a.emit("a1");
     b.emit("b1");
-    expect(handler).toBeCalledWith("a1");
-    expect(handler).not.toBeCalledWith("b1");
+    assert(handler.mock.calls.some((call) => call.arguments[0] === "a1"));
+    assert(handler.mock.calls.every((call) => call.arguments[0] !== "b1"));
 
     ab.emit(undefined);
     a.emit("a2");
     b.emit("b2");
-    expect(handler).not.toBeCalledWith("a2");
-    expect(handler).not.toBeCalledWith("b2");
+    assert(handler.mock.calls.every((call) => call.arguments[0] !== "a2"));
+    assert(handler.mock.calls.every((call) => call.arguments[0] !== "b2"));
 
     ab.emit(b);
     a.emit("a3");
     b.emit("b3");
-    expect(handler).not.toBeCalledWith("a3");
-    expect(handler).toBeCalledWith("b3");
+    assert(handler.mock.calls.every((call) => call.arguments[0] !== "a3"));
+    assert(handler.mock.calls.some((call) => call.arguments[0] === "b3"));
   });
 
   test("Switching a stream to an eager stream will emit", () => {
     const stream = makeSource<string>();
     const streamStream = makeSource<Source<string> | undefined>();
-    const handler = jest.fn();
+    const handler = mock.fn();
 
     const switchedStream = pipe(
       streamStream,
@@ -431,13 +467,13 @@ describe("switchAll", () => {
     );
     switchedStream(handler);
     streamStream.emit(stream);
-    expect(handler).toBeCalledWith("start");
+    assert(handler.mock.calls.some((call) => call.arguments[0] === "start"));
   });
 
   test("Switching an eager streamStream to undefined will not emit", () => {
     const stream = makeSource<string>();
     const streamStream = makeSource<Source<string> | undefined>();
-    const handler = jest.fn();
+    const handler = mock.fn();
 
     const switchedStream = pipe(
       streamStream,
@@ -446,27 +482,8 @@ describe("switchAll", () => {
       switchAll,
     );
     switchedStream(handler);
-    expect(handler).not.toBeCalled();
+    assert.equal(handler.mock.calls.length, 0);
     streamStream.emit(undefined);
-    expect(handler).not.toBeCalled();
+    assert.equal(handler.mock.calls.length, 0);
   });
 });
-
-describe("combineLatest", () => {
-  test("an event on any source will emit a new combined event", () => {
-    const a = makeSource<string>();
-    const b = makeSource<string>();
-    const handler = jest.fn();
-    combineLatest(a, b)(handler);
-
-    a.emit("a1");
-    expect(handler).toBeCalledWith(["a1", undefined]);
-    handler.mockClear();
-
-    b.emit("b2");
-    expect(handler).toBeCalledWith(["a1", "b2"]);
-  });
-});
-
-// TODO weird corner cases, where stuff happens during subscription or subscriptions
-//      happen during processing
