@@ -17,7 +17,7 @@ import {
   type Source,
 } from "./index.js";
 
-import { describe, test, vi, expect } from "vitest";
+import { describe, test, vi, expect, assertType } from "vitest";
 
 describe("makeSource", () => {
   test("onSubscribe emits to new subscribers only", () => {
@@ -312,6 +312,18 @@ describe("fan", () => {
 });
 
 describe("pipe", () => {
+  test("type mismatch between result and input raises error on input", () => {
+    assertType<Source<string>>(
+      pipe(
+        makeSource<number>(),
+        map((n) => "foo"),
+        // @ts-expect-error
+        map((n: number) => n > 2),
+        map((b: boolean) => "bar"),
+      ),
+    );
+  });
+
   test("piping operators together itself doesn't do anything to the source", () => {
     const stream = makeSource<number>();
     const streamSpy = vi.fn(stream);
