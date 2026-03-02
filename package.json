@@ -1,6 +1,6 @@
 {
   "name": "@janv/streams",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "TypeScript stream utilities and operators",
   "license": "MIT",
   "type": "module",
